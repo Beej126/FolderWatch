@@ -1,0 +1,68 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Folder Watch Config" Height="350" Width="1000"
+        WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <RoutedUICommand x:Key="EditFolderCommand" Text="Edit Folder"/>
+        <RoutedUICommand x:Key="EditCommandCommand" Text="Edit Command"/>
+    </Window.Resources>
+    <Window.CommandBindings>
+        <CommandBinding Command="{StaticResource EditFolderCommand}" />
+        <CommandBinding Command="{StaticResource EditCommandCommand}" />
+    </Window.CommandBindings>
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />     <!-- ListView -->
+            <RowDefinition Height="150" />   <!-- Log output fixed height -->
+            <RowDefinition Height="Auto" />  <!-- Buttons -->
+        </Grid.RowDefinitions>
+
+        <ListView Name="WatcherList" Grid.Row="0" Margin="0,0,0,8">
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn Header="Folder" Width="260">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Folder}">
+                                    <TextBlock.InputBindings>
+                                        <MouseBinding MouseAction="LeftDoubleClick" 
+                                                      Command="{StaticResource EditFolderCommand}"
+                                                      CommandParameter="{Binding}"/>
+                                    </TextBlock.InputBindings>
+                                </TextBlock>
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                    <GridViewColumn Header="Command">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Command}">
+                                    <TextBlock.InputBindings>
+                                        <MouseBinding MouseAction="LeftDoubleClick" 
+                                                      Command="{StaticResource EditCommandCommand}"
+                                                      CommandParameter="{Binding}"/>
+                                    </TextBlock.InputBindings>
+                                </TextBlock>
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                </GridView>
+            </ListView.View>
+        </ListView>
+
+        <TextBox Name="LogOutput"
+                 Grid.Row="1"
+                 IsReadOnly="True"
+                 VerticalScrollBarVisibility="Auto"
+                 HorizontalScrollBarVisibility="Auto"
+                 TextWrapping="NoWrap"
+                 FontFamily="Consolas"
+                 Margin="0,0,0,8" />
+
+        <WrapPanel Grid.Row="2" HorizontalAlignment="Left">
+            <Button Name="AddButton" Width="75" Margin="0,0,10,0" Content="Add" />
+            <Button Name="RemoveButton" Width="75" Margin="0,0,10,0" Content="Remove" />
+            <Button Name="ExitButton" Width="75" Content="Exit" />
+        </WrapPanel>
+    </Grid>
+</Window>
