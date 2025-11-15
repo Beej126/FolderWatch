@@ -2,6 +2,8 @@
 
 A Windows PowerShell utility that monitors folders for file changes and automatically executes custom commands when changes are detected.
 
+![alt text](readme-screenshot.png)
+
 ## Features
 
 - **Real-time monitoring**: Watch multiple folders simultaneously using .NET FileSystemWatcher
