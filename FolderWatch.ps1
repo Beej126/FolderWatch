@@ -1,42 +1,41 @@
+param(
+    [switch]$Hidden # start with hidden window
+)
+
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 Add-Type -AssemblyName Microsoft.VisualBasic
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-# try {
-#     [xml]$xaml = Get-Content -Raw -Path "$PSScriptRoot\FolderWatch.xaml"
-#     $reader = (New-Object System.Xml.XmlNodeReader $xaml)
-#     $window = [Windows.Markup.XamlReader]::Load($reader)
-# } catch {
-#     Write-Host "ERROR: Failed to load XAML. Line/Pos: $($_.Exception.LineNumber) / $($_.Exception.LinePosition) - $($_.Exception.Message)"
-#     exit 1
-# }
-
 try {
     $reader = [System.IO.StreamReader]::new("$PSScriptRoot\FolderWatch.xaml")
+    # setting XmlReaderSettings triggers full WPF parsing so we can make syntax errors visible to fix
     $xmlReaderSettings = [System.Xml.XmlReaderSettings]::new()
     $xmlReaderSettings.DtdProcessing = [System.Xml.DtdProcessing]::Ignore
     $xmlReader = [System.Xml.XmlReader]::Create($reader, $xmlReaderSettings)
 
-    # This triggers full WPF parsing
     $window = [System.Windows.Markup.XamlReader]::Load($xmlReader)
 }
 catch [System.Windows.Markup.XamlParseException] {
-    $ex = $_.Exception
-    Write-Host "❌ XAML Parse Error: $($ex.Message)"
+    Write-Host "❌ XAML Parse Error: $($_.Exception.Message)"
+    Add-Type -AssemblyName System.Windows.Forms
+    # show message box for these kind of early errors to give visibility
+    [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, "WPF XAML Syntax Error") | Out-Null
     exit 2
 }
 catch {
-    Write-Host "❌ Unexpected error: $($_.Exception.GetType().Name): $($_.Exception.Message)"
+    $err = "$($_.Exception.GetType().Name): $($_.Exception.Message)"
+    Write-Host "❌ Unexpected error: $err"
+    Add-Type -AssemblyName System.Windows.Forms
+    # show message box for these kind of early errors to give visibility
+    [System.Windows.Forms.MessageBox]::Show($err, "WPF XAML Syntax Error") | Out-Null
     exit 3
 }
 
 
-# Set window icon
 $iconPath = Join-Path $PSScriptRoot 'FolderWatch.ico'
 $window.Icon = [System.Windows.Media.Imaging.BitmapFrame]::Create([Uri]::new($iconPath))
 
-# Bind controls
 $watcherList = $window.FindName("WatcherList")
 $logBox = $window.FindName("LogOutput")
 $addButton = $window.FindName("AddButton")
@@ -50,7 +49,6 @@ $iniPath = Join-Path $PSScriptRoot "FolderWatchConfig.ini"
 $global:watchers = @()
 $global:watcherEvents = @()
 
-# In-memory log lines and helper (moved out of Load-WatchersFromIni to ensure availability before any Add-Watcher calls)
 if (-not $global:logLines) { $global:logLines = New-Object System.Collections.Generic.List[string] }
 function Add-Log {
     param([string]$Message)
@@ -130,21 +128,16 @@ $trayIcon.Visible = $true
 $trayIcon.add_MouseClick({
     if ($_.Button -eq 'Left') {
         if ($window.IsVisible) {
-            # Window is open, hide it
             $window.Hide()
         } else {
-            # Window is hidden, show it
             $window.Show()
-            if ($window.WindowState -eq [System.Windows.WindowState]::Minimized) { 
-                $window.WindowState = [System.Windows.WindowState]::Normal 
-            }
             $window.Activate()
             $window.Topmost = $true; $window.Topmost = $false
         }
     }
 })
 
-function Load-WatchersFromIni {
+function Import-WatchersFromIni {
     if (Test-Path $iniPath) {
         Get-Content $iniPath | ForEach-Object {
             if ($_ -match '^(.*)\|(.+)$') {
@@ -171,8 +164,6 @@ function Add-Watcher($folder, $command, $updateUI = $true) {
         $global:items.Add($entry) | Out-Null
     }
 
-    # Debug: Log watcher creation
-    $logPath = Join-Path $env:TEMP "folderwatcher.log"
     Add-Log "Creating watcher for: $folder"
     Add-Log "Command: $command"
 
@@ -198,7 +189,7 @@ function Add-Watcher($folder, $command, $updateUI = $true) {
 
     # Use Register-ObjectEvent with debouncing that takes the LAST event that happens to any given folder within the debounce period
     $action = {
-        param($sender, $eventArgs)
+        param($eventSender, $waitEventArgs)
 
         function _EventLog {
             param([string]$Message)
@@ -212,16 +203,16 @@ function Add-Watcher($folder, $command, $updateUI = $true) {
             })
         }
 
-        _EventLog "Event fired: $($eventArgs.ChangeType) - $($eventArgs.FullPath)"
+        _EventLog "Event fired: $($waitEventArgs.ChangeType) - $($waitEventArgs.FullPath)"
 
-        $key = $eventArgs.FullPath
-        $folder = $event.MessageData.Folder
-        $command = $event.MessageData.Command
-        $debounceMs = $event.MessageData.DebounceMs
-        $scriptRoot = $event.MessageData.ScriptRoot
-        $ignoreSuffixes = $event.MessageData.IgnoreSuffixes
+        $key = $waitEventArgs.FullPath
+        $folder = $waitEvent.MessageData.Folder
+        $command = $waitEvent.MessageData.Command
+        $debounceMs = $waitEvent.MessageData.DebounceMs
+        $scriptRoot = $waitEvent.MessageData.ScriptRoot
+        $ignoreSuffixes = $waitEvent.MessageData.IgnoreSuffixes
 
-        $lowerPath = $eventArgs.FullPath.ToLowerInvariant()
+        $lowerPath = $waitEventArgs.FullPath.ToLowerInvariant()
         foreach ($suffix in $ignoreSuffixes) {
             if ($lowerPath.EndsWith($suffix)) {
                 _EventLog "Ignoring temp file event: $lowerPath (suffix $suffix)"
@@ -240,7 +231,7 @@ function Add-Watcher($folder, $command, $updateUI = $true) {
         $timer.AutoReset = $false
 
         $executeAction = {
-            param($sender, $e)
+            param($eventSender, $e)
             function _EventLogInner {
                 param([string]$Message)
                 $timestamp = (Get-Date).ToString('HH:mm:ss')
@@ -252,10 +243,10 @@ function Add-Watcher($folder, $command, $updateUI = $true) {
                     $global:logBox.ScrollToEnd()
                 })
             }
-            $command = $event.MessageData.Command
-            $folder = $event.MessageData.Folder
-            $scriptRoot = $event.MessageData.ScriptRoot
-            $key = $event.MessageData.Key
+            $command = $waitEvent.MessageData.Command
+            $folder = $waitEvent.MessageData.Folder
+            $scriptRoot = $waitEvent.MessageData.ScriptRoot
+            $key = $waitEvent.MessageData.Key
             $expandedCommand = $command -replace '\{\{FOLDER\}\}', "`"$folder`""
             _EventLogInner "Executing after debounce: $expandedCommand"
             try {
@@ -339,7 +330,7 @@ function Update-WatcherAtIndex($item, $newFolder, $newCmd) {
 }
 
 $editFolderBinding.Add_Executed({
-    param($sender, $e)
+    param($eventSender, $e)
     $item = $e.Parameter
     if (-not $item) { return }
     $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
@@ -350,7 +341,7 @@ $editFolderBinding.Add_Executed({
 })
 
 $editCommandBinding.Add_Executed({
-    param($sender, $e)
+    param($eventSender, $e)
     $item = $e.Parameter
     if (-not $item) { return }
     $cmd = [Microsoft.VisualBasic.Interaction]::InputBox('Edit command:', 'Command Edit', $item.Command)
@@ -410,11 +401,12 @@ $window.add_Closing({
 $timer = New-Object System.Windows.Threading.DispatcherTimer
 $timer.Interval = [TimeSpan]::FromMilliseconds(50)
 $timer.Add_Tick({
-    $event = Wait-Event -Timeout 0 -ErrorAction SilentlyContinue
-    if ($event) { Remove-Event -EventIdentifier $event.EventIdentifier -ErrorAction SilentlyContinue }
+    $waitEvent = Wait-Event -Timeout 0 -ErrorAction SilentlyContinue
+    if ($waitEvent) { Remove-Event -EventIdentifier $waitEvent.EventIdentifier -ErrorAction SilentlyContinue }
 })
 $timer.Start()
 
-Load-WatchersFromIni
-$window.Show() | Out-Null
+Import-WatchersFromIni
+$Hidden ? $window.Hide() : $window.Show() | Out-Null
+
 [System.Windows.Threading.Dispatcher]::Run()
