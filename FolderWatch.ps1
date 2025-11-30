@@ -58,25 +58,26 @@ function Add-Log {
     if ($global:logLines.Count -gt 500) { $global:logLines.RemoveRange(0, $global:logLines.Count - 500) }
     if ($logBox) {
         $window.Dispatcher.Invoke({
-            $logBox.Text = ($global:logLines -join "`r`n")
-            $logBox.ScrollToEnd()
-        })
+                $logBox.Text = ($global:logLines -join "`r`n")
+                $logBox.ScrollToEnd()
+            })
     }
 }
 
+
 # Auto-size last column when window size changes
 $window.Add_SizeChanged({
-    $gridView = $watcherList.View
-    if ($gridView -and $gridView.Columns.Count -gt 1) {
-        $totalWidth = $watcherList.ActualWidth
-        $fixedWidth = 0
-        for ($i = 0; $i -lt $gridView.Columns.Count - 1; $i++) {
-            $fixedWidth += $gridView.Columns[$i].ActualWidth
+        $gridView = $watcherList.View
+        if ($gridView -and $gridView.Columns.Count -gt 1) {
+            $totalWidth = $watcherList.ActualWidth
+            $fixedWidth = 0
+            for ($i = 0; $i -lt $gridView.Columns.Count - 1; $i++) {
+                $fixedWidth += $gridView.Columns[$i].ActualWidth
+            }
+            $lastCol = $gridView.Columns[$gridView.Columns.Count - 1]
+            $lastCol.Width = [Math]::Max(100, $totalWidth - $fixedWidth - 35)
         }
-        $lastCol = $gridView.Columns[$gridView.Columns.Count - 1]
-        $lastCol.Width = [Math]::Max(100, $totalWidth - $fixedWidth - 35)
-    }
-})
+    })
 
 # Strongly-typed item with change notifications and observable collection for the ListView
 if (-not ([System.Management.Automation.PSTypeName]'WatcherItem').Type) {
@@ -126,16 +127,17 @@ $trayIcon.Visible = $true
 
 # Left-click tray icon to toggle window visibility
 $trayIcon.add_MouseClick({
-    if ($_.Button -eq 'Left') {
-        if ($window.IsVisible) {
-            $window.Hide()
-        } else {
-            $window.Show()
-            $window.Activate()
-            $window.Topmost = $true; $window.Topmost = $false
+        if ($_.Button -eq 'Left') {
+            if ($window.IsVisible) {
+                $window.Hide()
+            }
+            else {
+                $window.Show()
+                $window.Activate()
+                $window.Topmost = $true; $window.Topmost = $false
+            }
         }
-    }
-})
+    })
 
 function Import-WatchersFromIni {
     if (Test-Path $iniPath) {
@@ -164,8 +166,8 @@ function Add-Watcher($folder, $command, $updateUI = $true) {
         $global:items.Add($entry) | Out-Null
     }
 
-    Add-Log "Creating watcher for: $folder"
-    Add-Log "Command: $command"
+    Add-Log "Creating watcher for folder: $folder"
+    Add-Log "  Command: $command"
 
     try {
         $watcher = New-Object System.IO.FileSystemWatcher
@@ -173,9 +175,10 @@ function Add-Watcher($folder, $command, $updateUI = $true) {
         $watcher.IncludeSubdirectories = $false
         $watcher.EnableRaisingEvents = $true
         $watcher.NotifyFilter = [System.IO.NotifyFilters]'FileName, LastWrite'
-        Add-Log "Watcher created successfully, EnableRaisingEvents=$($watcher.EnableRaisingEvents)"
-    } catch {
-        Add-Log "ERROR creating watcher: $_"
+        # Add-Log "  Watcher created successfully, EnableRaisingEvents=$($watcher.EnableRaisingEvents)"
+    }
+    catch {
+        Add-Log "  ERROR creating watcher: $_"
         throw
     }
 
@@ -183,36 +186,36 @@ function Add-Watcher($folder, $command, $updateUI = $true) {
     if (-not $global:pendingExecutions) {
         $global:pendingExecutions = [hashtable]::Synchronized(@{})
     }
-        $debounceMs = 500
-        # Common temporary download suffixes to ignore (e.g., Edge/Chrome)
-        $ignoreSuffixes = @('.crdownload', '.part', '.partial', '.tmp')
+    $debounceMs = 500
+    # Common temporary download suffixes to ignore (e.g., Edge/Chrome)
+    $ignoreSuffixes = @('.crdownload', '.part', '.partial', '.tmp')
 
     # Use Register-ObjectEvent with debouncing that takes the LAST event that happens to any given folder within the debounce period
     $action = {
-        param($eventSender, $waitEventArgs)
+        param($eventSender, $evArgs)
 
         function _EventLog {
             param([string]$Message)
             $timestamp = (Get-Date).ToString('HH:mm:ss')
             $line = "[$timestamp] $Message"
             $global:window.Dispatcher.Invoke({
-                $global:logLines.Add($line)
-                if ($global:logLines.Count -gt 500) { $global:logLines.RemoveRange(0, $global:logLines.Count - 500) }
-                $global:logBox.Text = ($global:logLines -join "`r`n")
-                $global:logBox.ScrollToEnd()
-            })
+                    $global:logLines.Add($line)
+                    if ($global:logLines.Count -gt 500) { $global:logLines.RemoveRange(0, $global:logLines.Count - 500) }
+                    $global:logBox.Text = ($global:logLines -join "`r`n")
+                    $global:logBox.ScrollToEnd()
+                })
         }
 
-        _EventLog "Event fired: $($waitEventArgs.ChangeType) - $($waitEventArgs.FullPath)"
+        _EventLog "Event fired: $($evArgs.ChangeType) - $($evArgs.FullPath)"
 
-        $key = $waitEventArgs.FullPath
-        $folder = $waitEvent.MessageData.Folder
-        $command = $waitEvent.MessageData.Command
-        $debounceMs = $waitEvent.MessageData.DebounceMs
-        $scriptRoot = $waitEvent.MessageData.ScriptRoot
-        $ignoreSuffixes = $waitEvent.MessageData.IgnoreSuffixes
+        $key = $evArgs.FullPath
+        $folder = $Event.MessageData.Folder
+        $command = $Event.MessageData.Command
+        $debounceMs = $Event.MessageData.DebounceMs
+        $scriptRoot = $Event.MessageData.ScriptRoot
+        $ignoreSuffixes = $Event.MessageData.IgnoreSuffixes
 
-        $lowerPath = $waitEventArgs.FullPath.ToLowerInvariant()
+        $lowerPath = $evArgs.FullPath.ToLowerInvariant()
         foreach ($suffix in $ignoreSuffixes) {
             if ($lowerPath.EndsWith($suffix)) {
                 _EventLog "Ignoring temp file event: $lowerPath (suffix $suffix)"
@@ -237,39 +240,42 @@ function Add-Watcher($folder, $command, $updateUI = $true) {
                 $timestamp = (Get-Date).ToString('HH:mm:ss')
                 $line = "[$timestamp] $Message"
                 $global:window.Dispatcher.Invoke({
-                    $global:logLines.Add($line)
-                    if ($global:logLines.Count -gt 500) { $global:logLines.RemoveRange(0, $global:logLines.Count - 500) }
-                    $global:logBox.Text = ($global:logLines -join "`r`n")
-                    $global:logBox.ScrollToEnd()
-                })
+                        $global:logLines.Add($line)
+                        if ($global:logLines.Count -gt 500) { $global:logLines.RemoveRange(0, $global:logLines.Count - 500) }
+                        $global:logBox.Text = ($global:logLines -join "`r`n")
+                        $global:logBox.ScrollToEnd()
+                    })
             }
-            $command = $waitEvent.MessageData.Command
-            $folder = $waitEvent.MessageData.Folder
-            $scriptRoot = $waitEvent.MessageData.ScriptRoot
-            $key = $waitEvent.MessageData.Key
-            $expandedCommand = $command -replace '\{\{FOLDER\}\}', "`"$folder`""
-            _EventLogInner "Executing after debounce: $expandedCommand"
-            try {
-                if ($expandedCommand -match '^([^\s]+)\s*(.*)$') {
-                    Start-Process $matches[1] -ArgumentList $matches[2] -WorkingDirectory $scriptRoot
-                } else {
-                    Start-Process $expandedCommand -WorkingDirectory $scriptRoot
-                }
-                _EventLogInner "Success"
-            } catch {
-                _EventLogInner "Error: $_"
+            $expandedCommand = $Event.MessageData.Command -replace '\{\{FOLDER\}\}', "`"$($Event.MessageData.Folder)`""
+            $key = $Event.MessageData.Key
+            _EventLogInner "Executing: $expandedCommand"
+
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName, $psi.Arguments = $expandedCommand -split ' ', 2
+            $psi.RedirectStandardOutput = $true
+            $psi.UseShellExecute = $false # required for RedirectStandardOutput to work
+
+            $proc = New-Object System.Diagnostics.Process
+            $proc.StartInfo = $psi
+            $proc.Start()
+
+            while (-not $proc.StandardOutput.EndOfStream) {
+                _EventLogInner "    $($proc.StandardOutput.ReadLine())"
             }
+
+            _EventLogInner "Process exited with code: $($proc.ExitCode)"
+
             if ($global:pendingExecutions.ContainsKey($key)) {
                 $global:pendingExecutions.Remove($key)
-                _EventLogInner "Completed debounce for $key"
+                # _EventLogInner "Completed debounce for $key"
             }
         }
 
         $timerMessageData = @{
-            Command = $command
-            Folder = $folder
+            Command    = $command
+            Folder     = $folder
             ScriptRoot = $scriptRoot
-            Key = $key
+            Key        = $key
         }
 
         Register-ObjectEvent -InputObject $timer -EventName Elapsed -Action $executeAction -MessageData $timerMessageData | Out-Null
@@ -278,17 +284,17 @@ function Add-Watcher($folder, $command, $updateUI = $true) {
     }
 
     $messageData = @{
-        Folder = $folder
-        Command = $command
-        DebounceMs = $debounceMs
-        ScriptRoot = $PSScriptRoot
-            IgnoreSuffixes = $ignoreSuffixes
+        Folder         = $folder
+        Command        = $command
+        DebounceMs     = $debounceMs
+        ScriptRoot     = $PSScriptRoot
+        IgnoreSuffixes = $ignoreSuffixes
     }
 
     $created = Register-ObjectEvent $watcher "Created" -Action $action -MessageData $messageData
     $changed = Register-ObjectEvent $watcher "Changed" -Action $action -MessageData $messageData
     
-    Add-Log "Registered events: Created=$($created.Id), Changed=$($changed.Id)"
+    # Add-Log "Registered events: Created=$($created.Id), Changed=$($changed.Id)"
     $global:watchers += $watcher
     $global:watcherEvents += @($created, $changed)
 }
@@ -309,16 +315,16 @@ function Update-WatcherAtIndex($item, $newFolder, $newCmd) {
 
     # Dispose old watcher and unregister events
     if ($global:watchers[$index]) { $global:watchers[$index].Dispose() }
-    if ($global:watcherEvents[2*$index]) { Unregister-Event -SubscriptionId $global:watcherEvents[2*$index].Id -ErrorAction SilentlyContinue }
-    if ($global:watcherEvents[2*$index + 1]) { Unregister-Event -SubscriptionId $global:watcherEvents[2*$index + 1].Id -ErrorAction SilentlyContinue }
+    if ($global:watcherEvents[2 * $index]) { Unregister-Event -SubscriptionId $global:watcherEvents[2 * $index].Id -ErrorAction SilentlyContinue }
+    if ($global:watcherEvents[2 * $index + 1]) { Unregister-Event -SubscriptionId $global:watcherEvents[2 * $index + 1].Id -ErrorAction SilentlyContinue }
 
     # Create new watcher (appends to arrays)
     Add-Watcher $newFolder $newCmd $false
 
     # Move new watcher/events to correct index
     $global:watchers[$index] = $global:watchers[$global:watchers.Count - 1]
-    $global:watcherEvents[2*$index] = $global:watcherEvents[$global:watcherEvents.Count - 2]
-    $global:watcherEvents[2*$index + 1] = $global:watcherEvents[$global:watcherEvents.Count - 1]
+    $global:watcherEvents[2 * $index] = $global:watcherEvents[$global:watcherEvents.Count - 2]
+    $global:watcherEvents[2 * $index + 1] = $global:watcherEvents[$global:watcherEvents.Count - 1]
     
     # Trim arrays
     if ($global:watchers.Count -gt 1) {
@@ -330,83 +336,95 @@ function Update-WatcherAtIndex($item, $newFolder, $newCmd) {
 }
 
 $editFolderBinding.Add_Executed({
-    param($eventSender, $e)
-    $item = $e.Parameter
-    if (-not $item) { return }
-    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-    $dialog.SelectedPath = $item.Folder
-    if ($dialog.ShowDialog() -eq 'OK') {
-        Update-WatcherAtIndex $item $dialog.SelectedPath $item.Command
-    }
-})
+        param($eventSender, $e)
+        $item = $e.Parameter
+        if (-not $item) { return }
+        $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+        $dialog.SelectedPath = $item.Folder
+        if ($dialog.ShowDialog() -eq 'OK') {
+            Update-WatcherAtIndex $item $dialog.SelectedPath $item.Command
+        }
+    })
 
 $editCommandBinding.Add_Executed({
-    param($eventSender, $e)
-    $item = $e.Parameter
-    if (-not $item) { return }
-    $cmd = [Microsoft.VisualBasic.Interaction]::InputBox('Edit command:', 'Command Edit', $item.Command)
-    if ($cmd) {
-        Update-WatcherAtIndex $item $item.Folder $cmd
-    }
-})
+        param($eventSender, $e)
+        $item = $e.Parameter
+        if (-not $item) { return }
+        $cmd = [Microsoft.VisualBasic.Interaction]::InputBox('Edit command:', 'Command Edit', $item.Command)
+        if ($cmd) {
+            Update-WatcherAtIndex $item $item.Folder $cmd
+        }
+    })
 
 # Button handlers
 $addButton.Add_Click({
-    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-    if ($dialog.ShowDialog() -eq "OK") {
-        $cmd = [Microsoft.VisualBasic.Interaction]::InputBox("Enter command to run on change:", "Command Input")
-        if ($cmd) {
-            Add-Watcher $dialog.SelectedPath $cmd
-            Save-WatchersToIni
+        $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+        if ($dialog.ShowDialog() -eq "OK") {
+            $cmd = [Microsoft.VisualBasic.Interaction]::InputBox("Enter command to run on change:", "Command Input")
+            if ($cmd) {
+                Add-Watcher $dialog.SelectedPath $cmd
+                Save-WatchersToIni
+            }
         }
-    }
-})
+    })
 
 $removeButton.Add_Click({
-    $selected = $watcherList.SelectedItem
-    if ($selected) {
-        $index = $global:items.IndexOf($selected)
-        $global:items.RemoveAt($index)
+        $selected = $watcherList.SelectedItem
+        if ($selected) {
+            $index = $global:items.IndexOf($selected)
+            $global:items.RemoveAt($index)
 
-        # Dispose watcher and unregister events
-        $global:watchers[$index].Dispose()
-        if ($global:watcherEvents[2*$index]) { Unregister-Event -SubscriptionId $global:watcherEvents[2*$index].Id -ErrorAction SilentlyContinue }
-        if ($global:watcherEvents[2*$index + 1]) { Unregister-Event -SubscriptionId $global:watcherEvents[2*$index + 1].Id -ErrorAction SilentlyContinue }
+            # Dispose watcher and unregister events
+            $global:watchers[$index].Dispose()
+            if ($global:watcherEvents[2 * $index]) { Unregister-Event -SubscriptionId $global:watcherEvents[2 * $index].Id -ErrorAction SilentlyContinue }
+            if ($global:watcherEvents[2 * $index + 1]) { Unregister-Event -SubscriptionId $global:watcherEvents[2 * $index + 1].Id -ErrorAction SilentlyContinue }
         
-        # Remove from arrays
-        $global:watchers = $global:watchers[0..($index - 1)] + $global:watchers[($index + 1)..($global:watchers.Count - 1)]
-        $global:watcherEvents = $global:watcherEvents[0..(2*$index - 1)] + $global:watcherEvents[(2*$index + 2)..($global:watcherEvents.Count - 1)]
+            # Remove from arrays
+            $global:watchers = $global:watchers[0..($index - 1)] + $global:watchers[($index + 1)..($global:watchers.Count - 1)]
+            $global:watcherEvents = $global:watcherEvents[0..(2 * $index - 1)] + $global:watcherEvents[(2 * $index + 2)..($global:watcherEvents.Count - 1)]
 
-        Save-WatchersToIni
-    }
-})
+            Save-WatchersToIni
+        }
+    })
 
 $exitButton.Add_Click({
-    $window.Close()
-    $app = [System.Windows.Application]::Current
-    if ($app) {
-        $app.Shutdown()
-    } else {
-        [System.Windows.Threading.Dispatcher]::CurrentDispatcher.InvokeShutdown()
-    }
-})
+    
+        $window.Close()
+        $app = [System.Windows.Application]::Current
+        if ($app) {
+            $app.Shutdown()
+        }
+        else {
+            [System.Windows.Threading.Dispatcher]::CurrentDispatcher.InvokeShutdown()
+        }
+    })
 
 # Intercept window closing to keep tray running; hide instead of closing
 $window.add_Closing({
-    $_.Cancel = $true
-    $window.Hide()
-})
+        $_.Cancel = $true
+        $window.Hide()
+    })
 
 # Process PowerShell event queue periodically
+# This is required for Register-ObjectEvent -Action scriptblocks to execute
 $timer = New-Object System.Windows.Threading.DispatcherTimer
-$timer.Interval = [TimeSpan]::FromMilliseconds(50)
+$timer.Interval = [TimeSpan]::FromMilliseconds(100)
 $timer.Add_Tick({
-    $waitEvent = Wait-Event -Timeout 0 -ErrorAction SilentlyContinue
-    if ($waitEvent) { Remove-Event -EventIdentifier $waitEvent.EventIdentifier -ErrorAction SilentlyContinue }
-})
+        try {
+            # Wait-Event with timeout 0 processes completed event actions and returns them
+            # This doesn't interfere with pending events
+            while ($ev = Wait-Event -Timeout 0 -ErrorAction SilentlyContinue) {
+                Remove-Event -EventIdentifier $ev.EventIdentifier -ErrorAction SilentlyContinue
+            }
+        }
+        catch {
+            # Ignore event processing errors
+        }
+    })
 $timer.Start()
 
 Import-WatchersFromIni
+
 $Hidden ? $window.Hide() : $window.Show() | Out-Null
 
 [System.Windows.Threading.Dispatcher]::Run()
