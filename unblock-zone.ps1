@@ -23,7 +23,7 @@ if ($isWindowsPowerShell) {
     if ($blockedFiles) {
         $blockedFiles | ForEach-Object {
             Remove-Item -Path $_.FullName -Stream 'Zone.Identifier' -Force
-            Write-Host "Windows PowerShell Unblocked: $($_.FullName)"
+            Write-Host "✓ Unblocked: $($_.FullName)"
         }
     } else {
         Write-Host "No blocked files found."
@@ -68,7 +68,7 @@ if ($isWindowsPowerShell) {
                         Write-Host "  ❌ Manual removal also failed: $_" -ForegroundColor Red
                     }
                 } else {
-                    Write-Host "  ✓ PowerShell Core Unblocked: $($_.Name)" -ForegroundColor Green
+                    Write-Host "  ✓ Unblocked: $($_.Name)" -ForegroundColor Green
                 }
             } catch {
                 Write-Host "  ❌ Error unblocking: $_" -ForegroundColor Red
